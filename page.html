@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>US Market Signals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0d10;--panel:#12151a;--line:#232830;--txt:#d6dae0;--dim:#7d8590;--amber:#ffb020;--green:#3ee89a;--red:#ff5c5c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:12px/1.45 'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+header{display:flex;align-items:center;gap:18px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+h1{margin:0;font-size:13px;color:var(--amber);letter-spacing:.5px}
+nav{display:flex;gap:2px}
+nav button{background:none;border:0;color:var(--dim);font:inherit;padding:5px 11px;cursor:pointer;border-bottom:2px solid transparent}
+nav button:hover{color:var(--txt)}
+nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
+#upd{margin-left:auto;color:var(--dim)}
+main{padding:12px 14px}
+.pane{display:none}.pane.on{display:block}
+table{border-collapse:collapse;width:100%}
+th,td{padding:3px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--dim);font-weight:400;cursor:pointer;user-select:none;position:sticky;top:37px;background:var(--bg)}
+th:hover{color:var(--amber)}
+th .ar{color:var(--amber);margin-left:3px}
+tr:hover td{background:#14181e}
+tfoot td{font-weight:600;border-top:1px solid var(--amber);border-bottom:0}
+.tk{color:var(--amber);font-weight:600}
+.up{color:var(--green)}.dn{color:var(--red)}.dim{color:var(--dim)}
+.bar{display:flex;gap:10px;margin:0 0 10px;flex-wrap:wrap;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);padding:7px 12px}
+.card b{display:block;font-size:15px;font-weight:600}
+.card>span{color:var(--dim)}
+input[type=text]{background:var(--panel);border:1px solid var(--line);color:var(--txt);font:inherit;padding:4px 8px;width:150px}
+label{color:var(--dim);cursor:pointer}
+h2{font-size:12px;color:var(--amber);margin:16px 0 6px;font-weight:600}
+.note{color:var(--dim);margin:14px 0 0}
+.soon{color:var(--dim);padding:30px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>US MARKET SIGNALS</h1>
+  <nav id="nav">
+    <button data-p="sum" class="on">Сводка</button>
+    <button data-p="all">Все акции</button>
+    <button data-p="ins">Инсайдеры</button>
+    <button data-p="mine">Мои акции</button>
+  </nav>
+  <span id="upd"></span>
+</header>
+<main>
+  <section class="pane on" id="p-sum">
+    <div class="bar" id="sumcards"></div>
+    <h2>Обратить внимание</h2><div class="soon">Появится после этапа «Инсайдеры, индикаторы, скоринг».</div>
+    <h2>Мои позиции</h2><div class="soon">Статусы ДЕРЖАТЬ / ПРОВЕРИТЬ появятся вместе со скорингом. Сейчас — вкладка «Мои акции».</div>
+    <h2>Резкие движения</h2><div class="soon">Появится вместе с пресс-релизами.</div>
+    <h2>Пресс-релизы</h2><div class="soon">Появится на этапе «Пресс-релизы с ИИ».</div>
+    <p class="note">Сайт показывает отбор по правилам, а не рекомендации к покупке или продаже.</p>
+  </section>
+  <section class="pane" id="p-all">
+    <div class="bar">
+      <input type="text" id="f-all" placeholder="фильтр по тикеру">
+      <label><input type="checkbox" id="f-pos"> только с позицией</label>
+    </div>
+    <table id="t-all"></table>
+  </section>
+  <section class="pane" id="p-ins"><div class="soon">Сделки инсайдеров (SEC Form 4) появятся на следующем этапе.</div></section>
+  <section class="pane" id="p-mine">
+    <div class="bar" id="minecards"></div>
+    <table id="t-mine"></table>
+    <h2>Закрытые позиции</h2>
+    <table id="t-closed"></table>
+    <p class="note">FIFO. Комиссии и дивиденды не учитываются. «Всего %» — к стоимости всех проданных и открытых лотов.</p>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const fmtN=(n,d=2)=>n==null?'—':n.toLocaleString('ru-RU',{minimumFractionDigits:d,maximumFractionDigits:d}).replace(/ /g,' ');
+const cls=n=>n==null||Math.abs(n)<0.005?'dim':(n>0?'up':'dn');
+const sgn=(n,d=2)=>n==null?'—':(n>0?'+':'')+fmtN(n,d);
+const money=n=>fmtN(n,2);
+const pnl=n=>`<span class="${cls(n)}">${sgn(n)}</span>`;
+const pct=n=>`<span class="${cls(n)}">${n==null?'—':sgn(n)+'%'}</span>`;
+
+const COLS={
+  mine:[
+    {k:'ticker',t:'Тикер',f:r=>`<span class="tk">${r.ticker}</span>`},
+    {k:'qty',t:'Кол-во',f:r=>fmtN(r.qty,0)},
+    {k:'avg',t:'Средняя',f:r=>money(r.avg)},
+    {k:'price',t:'Цена',f:r=>money(r.price)},
+    {k:'day_pct',t:'День %',f:r=>pct(r.day_pct)},
+    {k:'value',t:'Стоимость',f:r=>money(r.value)},
+    {k:'realized',t:'Реализ. $',f:r=>pnl(r.realized)},
+    {k:'realized_pct',t:'Реализ. %',f:r=>pct(r.realized_pct)},
+    {k:'unreal',t:'Нереализ. $',f:r=>pnl(r.unreal)},
+    {k:'unreal_pct',t:'Нереализ. %',f:r=>pct(r.unreal_pct)},
+    {k:'total',t:'Всего $',f:r=>pnl(r.total)},
+    {k:'total_pct',t:'Всего %',f:r=>pct(r.total_pct)},
+  ],
+  closed:[
+    {k:'ticker',t:'Тикер',f:r=>`<span class="tk">${r.ticker}</span>`},
+    {k:'price',t:'Цена',f:r=>money(r.price)},
+    {k:'day_pct',t:'День %',f:r=>pct(r.day_pct)},
+    {k:'realized',t:'Реализ. $',f:r=>pnl(r.realized)},
+    {k:'realized_pct',t:'Реализ. %',f:r=>pct(r.realized_pct)},
+  ],
+  all:[
+    {k:'ticker',t:'Тикер',f:r=>`<span class="tk">${r.ticker}</span>`},
+    {k:'price',t:'Цена',f:r=>money(r.price)},
+    {k:'day_pct',t:'День %',f:r=>pct(r.day_pct)},
+    {k:'qty',t:'Позиция',f:r=>r.qty?fmtN(r.qty,0):'<span class="dim">—</span>'},
+    {k:'value',t:'Стоимость',f:r=>r.value?money(r.value):'<span class="dim">—</span>'},
+    {k:'weight',t:'Вес %',f:r=>r.weight?fmtN(r.weight,1)+'%':'<span class="dim">—</span>'},
+  ],
+};
+const state={mine:{k:'value',d:-1},closed:{k:'realized',d:-1},all:{k:'weight',d:-1}};
+let DATA=null;
+
+function sorted(rows,s){
+  return rows.slice().sort((a,b)=>{
+    const x=a[s.k],y=b[s.k];
+    if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1;
+    return (typeof x==='string'?x.localeCompare(y):x-y)*s.d;
+  });
+}
+function table(id,rows,foot){
+  const cols=COLS[id],s=state[id];
+  const head='<thead><tr>'+cols.map(c=>`<th data-k="${c.k}">${c.t}${s.k===c.k?`<span class="ar">${s.d>0?'▲':'▼'}</span>`:''}</th>`).join('')+'</tr></thead>';
+  const body='<tbody>'+sorted(rows,s).map(r=>'<tr>'+cols.map(c=>`<td>${c.f(r)}</td>`).join('')+'</tr>').join('')+'</tbody>';
+  $('#t-'+id).innerHTML=head+body+(foot||'');
+  $('#t-'+id).querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k; s.d=(s.k===k)?-s.d:(k==='ticker'?1:-1); s.k=k; render();
+  });
+}
+function cards(el,t){
+  $(el).innerHTML=[['Стоимость',money(t.value)],['Нереализ.',pnl(t.unreal)+' '+pct(t.unreal_pct)],
+    ['Реализ.',pnl(t.realized)+' '+pct(t.realized_pct)],['Всего',pnl(t.total)+' '+pct(t.total_pct)]]
+    .map(([a,b])=>`<div class="card"><span>${a}</span><b>${b}</b></div>`).join('');
+}
+function render(){
+  if(!DATA)return;
+  const t=DATA.totals;
+  cards('#sumcards',t); cards('#minecards',t);
+  const foot=`<tfoot><tr><td>ИТОГО</td><td></td><td></td><td></td><td></td><td>${money(t.value)}</td><td>${pnl(t.realized)}</td><td>${pct(t.realized_pct)}</td><td>${pnl(t.unreal)}</td><td>${pct(t.unreal_pct)}</td><td>${pnl(t.total)}</td><td>${pct(t.total_pct)}</td></tr></tfoot>`;
+  table('mine',DATA.mine,foot);
+  table('closed',DATA.closed);
+  const q=$('#f-all').value.trim().toUpperCase(), only=$('#f-pos').checked;
+  table('all',DATA.all.filter(r=>(!q||r.ticker.includes(q))&&(!only||r.qty>0)));
+  const d=new Date(DATA.updated*1000);
+  $('#upd').textContent='цены: '+(DATA.updated?d.toLocaleTimeString('ru-RU'):'нет данных');
+}
+async function load(){
+  try{
+    const r=await fetch('/api/data',{cache:'no-store'});
+    if(!r.ok)throw new Error(r.status);
+    DATA=await r.json(); render();
+  }catch(e){$('#upd').textContent='ошибка загрузки: '+e.message;}
+}
+$('#nav').onclick=e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.p));
+  try{localStorage.setItem('us_tab',b.dataset.p)}catch(_){}
+};
+$('#f-all').oninput=render; $('#f-pos').onchange=render;
+try{const t=localStorage.getItem('us_tab'); if(t){const b=document.querySelector(`nav button[data-p="${t}"]`); if(b)b.click();}}catch(_){}
+load(); setInterval(load,300000);
+</script>
+</body>
+</html>
